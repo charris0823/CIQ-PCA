@@ -1,0 +1,25 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Amazon Transcribe Post Call Analytics - PCA Server - DDBTable
+
+Resources:
+  Table:
+    Type: "AWS::DynamoDB::Table"
+    Properties:
+      KeySchema:
+        - AttributeName: PKJobId
+          KeyType: HASH
+        - AttributeName: SKApiMode
+          KeyType: RANGE
+      AttributeDefinitions:
+        - AttributeName: PKJobId
+          AttributeType: S
+        - AttributeName: SKApiMode      
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: True
+
+Outputs:
+  TableName:
+    Value: !Ref Table

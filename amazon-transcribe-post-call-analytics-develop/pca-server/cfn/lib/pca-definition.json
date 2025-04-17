@@ -1,0 +1,198 @@
+{
+  "Comment": "Post-Call Analytics Workflow with Transcribe and Comprehend",
+  "StartAt": "CheckFileType?",
+  "States": {
+    "CheckFileType?": {
+      "Type": "Choice",
+      "Comment": "Picks the correct pathway for audio and json files",
+      "Choices": [
+        {
+          "Variable": "$.inputType",
+          "StringEquals": "audio",
+          "Next": "TranscribeAudio"
+        }
+      ],
+      "Default": "ProcessTranscriptHeader"
+    },
+    "TranscribeAudio": {
+      "Comment": "Sends the file in S3 for Transcription",
+      "Type": "Task",
+      "Resource": "${SFStartTranscribeJobArn}",
+      "Retry": [{
+          "IntervalSeconds": 5,
+          "ErrorEquals": ["Lambda.Unknown"]
+      }],
+      "Next": "TranscribeStarted?"
+    },
+    "TranscribeStarted?": {
+      "Type": "Choice",
+      "Comment": "If a job was not started then we need to quit this workflow",
+      "Choices": [
+        {
+          "Variable": "$.jobName",
+          "StringEquals": "",
+          "Next": "TranscriptionFailed"
+        }
+      ],
+      "Default": "WaitForMainTranscribe"
+    },
+    "WaitForMainTranscribe": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::lambda:invoke.waitForTaskToken",
+      "Parameters": {
+        "FunctionName":"${SFAwaitNotificationArn}",
+        "Payload":{
+          "Input.$": "$",
+          "TaskToken.$":"$$.Task.Token"
+        }
+      },
+      "Retry": [{
+          "IntervalSeconds": 5,
+          "ErrorEquals": ["Lambda.Unknown"]
+      }],
+      "Next": "TranscribeComplete?",
+      "Catch": [
+      {
+        "ErrorEquals": [ "States.ALL" ],
+        "Next": "TranscriptionFailed"
+      }
+      ]
+    },
+    "TranscribeComplete?": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.transcribeStatus",
+          "StringEquals": "COMPLETED",
+          "Next": "ProcessJobHeader"
+        },
+        {
+          "Variable": "$.transcribeStatus",
+          "StringEquals": "RETRY",
+          "Next": "TranscribeAudio"
+        }
+      ],
+      "Default": "TranscriptionFailed"
+    },
+    "ProcessJobHeader": {
+      "Comment": "Creates header information based upon the Transcribe job",
+      "Type": "Task",
+      "Resource": "${SFExtractJobHeaderArn}",
+      "Retry": [{
+          "IntervalSeconds": 5,
+          "ErrorEquals": ["Lambda.Unknown"]
+      }],
+      "Next": "ProcessTranscription"
+    },
+    "ProcessTranscriptHeader": {
+      "Comment": "Creates header information based upon what's available in a transcript file",
+      "Type": "Task",
+      "Resource": "${SFExtractTranscriptHeaderArn}",
+      "Retry": [{
+          "IntervalSeconds": 5,
+          "ErrorEquals": ["Lambda.Unknown"]
+      }],
+      "Next": "ProcessTranscription"
+    },
+    "ProcessTranscription": {
+      "Comment": "Takes the output from Transcribe and creates the initial results processing",
+      "Type": "Task",
+      "Resource": "${SFProcessTurnArn}",
+      "Retry": [{
+          "IntervalSeconds": 5,
+          "ErrorEquals": ["Lambda.Unknown"]
+      }],
+      "Next": "ProcessTelephonyCTR?"
+    },
+    "ProcessTelephonyCTR?": {
+      "Type": "Choice",
+      "Comment": "Do we have a telephony-supplied CTR file to process?",
+      "Choices": [
+        {
+          "Variable": "$.telephony",
+          "StringEquals": "genesys",
+          "Next": "GenesysCTR"
+        }
+      ],
+      "Default": "NoDefinedCTR"
+    },
+    "NoDefinedCTR": {
+      "Type": "Pass",
+      "Next": "PostCTRProcessing"
+    },
+    "GenesysCTR": {
+      "Type": "Task",
+      "Comment": "Handle Genesys-specific CTR files",
+      "Resource": "${SFCTRGenesysArn}",
+      "Retry": [{
+          "IntervalSeconds": 5,
+          "ErrorEquals": ["Lambda.Unknown"]
+      }],
+      "Next": "PostCTRProcessing"
+    },
+    "PostCTRProcessing": {
+      "Comment": "Performs post processing after the CTR step has been completed",
+      "Type": "Task",
+      "Resource":"${SFPostCTRProcessingArn}",
+      "Retry": [{
+          "IntervalSeconds": 5,
+          "ErrorEquals": ["Lambda.Unknown"]
+      }],
+      "Next": "Summarize?"
+    }, 
+    "Summarize?" : {
+      "Type": "Choice",
+      "Comment": "Do we have to summarize the call?",
+      "Choices": [
+        {
+          "Variable": "$.summarize",
+          "StringEquals": "true",
+          "Next": "ProcessSummarize"
+        }
+      ],
+      "Default": "NoSummarize"
+    },
+    "NoSummarize": {
+      "Type": "Pass",
+      "Next": "FinalProcessing"
+    },
+    "ProcessSummarize":{
+      "Comment": "Performs summarization after the PostCTRProcessing is completed",
+      "Type": "Task",
+      "Resource":"${SFSummarizeArn}",
+      "Retry": [{
+          "IntervalSeconds": 5,
+          "ErrorEquals": ["Lambda.Unknown"]
+      }],
+      "Next": "FinalProcessing"
+    },
+    "FinalProcessing": {
+      "Comment": "Performs any final common processing after the telephony CTR work",
+      "Type": "Task",
+      "Resource": "${SFFinalProcessingArn}",
+      "Retry": [{
+          "IntervalSeconds": 5,
+          "ErrorEquals": ["Lambda.Unknown"]
+      }],
+      "Next": "Success"
+    },
+    "TranscriptionFailed": {
+      "Comment": "Transcription failed, tidy up resources and move source audio to failed folder",
+      "Type": "Task",
+      "Resource": "${SFTranscribeFailedArn}",
+      "Retry": [{
+          "IntervalSeconds": 5,
+          "ErrorEquals": ["Lambda.Unknown"]
+      }],
+      "Next": "Failed"
+    },
+    "Failed": {
+      "Type": "Fail",
+      "Cause": "Error launching or processing Transcribe job."
+    },
+    "Success": {
+      "Type": "Pass",
+      "End": true
+    }
+  }
+}

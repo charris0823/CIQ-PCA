@@ -1,0 +1,86 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Amazon Transcribe Post Call Analytics - PCA Server - Load sample audio files 
+
+Transform: AWS::Serverless-2016-10-31
+
+Parameters:
+  ParentStackName:
+    Type: String
+    Description: Name of the parent stack
+  
+  # DependsOn parameters used only to force conditional dependency from main stack
+  DependsOnPCAServer:
+    Type: String
+    Default: NotRequired
+  DependsOnPCAUI:
+    Type: String
+    Default: NotRequired
+  DependsOnPCADashboards:
+    Type: String
+    Default: NotRequired
+
+Globals:
+  Function:
+    Runtime: python3.13
+    MemorySize: 1024
+    Timeout: 60
+
+Resources:
+
+  CopySamplesRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+      Policies:
+        - PolicyName: s3-input-bucket-write-policy
+          PolicyDocument:
+            Statement:
+              Effect: Allow
+              Action:
+                - s3:PutObject
+              Resource:
+                - !Sub
+                  - 'arn:aws:s3:::${bucket}/*'
+                  - bucket: !Sub '{{resolve:ssm:${ParentStackName}-InputBucketName}}'
+                - !Sub
+                  - 'arn:aws:s3:::${bucket}/*'
+                  - bucket: !Sub '{{resolve:ssm:${ParentStackName}-SupportFilesBucketName}}'
+
+
+  CopySamplesFunction:
+    Type: "AWS::Lambda::Function"
+    Properties:
+      Code:  ./src
+      Handler: copy-samples.lambda_handler
+      Runtime: python3.13
+      Timeout: 300
+      Role: !GetAtt CopySamplesRole.Arn
+      Environment:
+        Variables:
+          SUPPORTFILES_BUCKET_NAME: !Sub '{{resolve:ssm:${ParentStackName}-SupportFilesBucketName}}'
+          INPUT_BUCKET_NAME: !Sub '{{resolve:ssm:${ParentStackName}-InputBucketName}}'
+          INPUT_BUCKET_RAW_AUDIO: !Sub '{{resolve:ssm:${ParentStackName}-InputBucketRawAudio}}'
+
+  CopySamples:
+    Type: "AWS::CloudFormation::CustomResource"
+    Properties:
+      ServiceToken: !GetAtt CopySamplesFunction.Arn
+      # trigger update to re-copy files when params below change
+      SamplesVersion: 0.3
+      DependsOnPCADashboards: !Ref DependsOnPCADashboards 
+
+Outputs:
+
+  RolesForKMSKey:
+    Value: !Join
+      - ', '
+      - - !Sub '"${CopySamplesRole.Arn}"'
