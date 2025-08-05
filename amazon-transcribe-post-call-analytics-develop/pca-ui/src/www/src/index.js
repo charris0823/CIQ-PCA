@@ -3,8 +3,9 @@ import ReactDOM from "react-dom";
 import "./index.css";
 import App from "./App";
 import reportWebVitals from "./reportWebVitals";
-import "@cloudscape-design/global-styles/index.css"
-// import "bootstrap/dist/css/bootstrap.min.css";
+
+import { ThemeProvider, CssBaseline } from "@mui/material";
+import theme from "./theme"; 
 
 import {
   parseAuthQueryString,
@@ -16,7 +17,10 @@ import {
 const renderApp = () => {
   ReactDOM.render(
     <React.StrictMode>
-      <App />
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <App />
+      </ThemeProvider>
     </React.StrictMode>,
     document.getElementById("root")
   );

@@ -1,7 +1,12 @@
-import { Placeholder as P } from "react-bootstrap";
+import React from 'react';
+import { Skeleton, Box } from '@mui/material';
 
-export const Placeholder = () => (
-  <P as="p" animation="glow">
-    <P xs={12} />
-  </P>
-);
+export const Placeholder = () => {
+  return (
+    <Box sx={{ width: '100%' }}>
+      <Skeleton variant="text" height={40} />
+      <Skeleton variant="text" height={30} width="80%" />
+      <Skeleton variant="rectangular" height={100} />
+    </Box>
+  );
+};

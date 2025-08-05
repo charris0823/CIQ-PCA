@@ -1,48 +1,59 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import useSWR from "swr";
-/* import { Form } from "react-bootstrap";*/
-import DatePicker from "react-datepicker";
+import { Link } from "react-router-dom";
+import { format } from "date-fns";
 import {
   entities as getEntities,
   languages as getLanguages,
   search,
 } from "../api/api";
-import { ContactTable } from "../components/ContactTable";
 import { useDangerAlert } from "../hooks/useAlert";
-import { MultiSelect } from "../components/MultiSelect";
-import { Select } from "../components/Select";
-import { ContentLayout } from "@cloudscape-design/components";
-import { Button, Link, Header, Form, Grid, Container, SpaceBetween, Input, FormField, TextContent } from '@cloudscape-design/components';
+import {
+  Button,
+  Container,
+  Typography,
+  Box,
+  Stack,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  TextField,
+  Breadcrumbs,
+  CircularProgress,
+  TableContainer,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  Paper,
+  Autocomplete,
+} from "@mui/material";
+import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
+import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
+import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 
-
-const sentimentWhat = [
+const SENTIMENT_WHAT = [
   { value: "average", label: "Average" },
   { value: "trend", label: "Trending" },
 ];
 
-const sentimentWho = [
+const SENTIMENT_WHO = [
   { value: "caller", label: "Customer" },
   { value: "agent", label: "Agent" },
 ];
 
-const sentimentDirection = [
+const SENTIMENT_DIRECTION = [
   { value: "positive", label: "Positive" },
   { value: "negative", label: "Negative" },
 ];
 
 function Search({ setAlert }) {
-  const [editing, setEditing] = useState(true);
   const [query, setQuery] = useState({});
-  const [shouldSearch, setShouldSearch] = useState(true);
   const [jobName, setJobName] = useState("");
-
-  useEffect(() => {
-    (query.timestampTo && query.timestampTo) ||
-    (!query.timestampTo && !query.timestampFrom) ||
-    (jobName)
-      ? setShouldSearch(true)
-      : setShouldSearch(false);
-  }, [query.timestampTo, query.timestampFrom, jobName]);
+  const [selectedEntities, setSelectedEntities] = useState([]);
+  const [showResults, setShowResults] = useState(false);
 
   const { data: entities, error: errorEntities } = useSWR(
     `/entities`,
@@ -52,140 +63,195 @@ function Search({ setAlert }) {
     `/languages`,
     getLanguages
   );
-  const { data: results, error: errorResults } = useSWR(
-    shouldSearch ? [`/search`, query] : null,
-    () => search(query)
-  );
 
-  const handleDates = (dates) => {
-    const [start, end] = dates;
-
-    const timestampFrom = new Date(start).getTime();
-    const timestampTo = end ? new Date(end).setUTCHours(23, 59, 59, 999) : null;
-
-    handleQueryInput(timestampFrom, "timestampFrom");
-    handleQueryInput(timestampTo, "timestampTo");
+  const fullQuery = {
+    ...query,
+    ...(selectedEntities.length > 0 && {
+      entity: selectedEntities.map((e) => e.value).join(","),
+    }),
+    ...(jobName && { jobName }),
   };
+
+  const shouldSearch =
+    (query.timestampFrom && query.timestampTo) ||
+    (!query.timestampFrom && !query.timestampTo) ||
+    jobName;
+
+  const {
+    data: results,
+    error: errorResults,
+    isLoading,
+  } = useSWR(shouldSearch && showResults ? [`/search`, fullQuery] : null, () =>
+    search(fullQuery)
+  );
 
   const filterEmptyKeys = (obj) => {
     const shouldKeep = (v) => (Array.isArray(v) ? v.length > 0 : v !== null);
-
     return Object.fromEntries(
       Object.entries(obj).filter(([_, v]) => shouldKeep(v))
     );
   };
 
-  const handleQueryInput = (input, field) =>
-    setQuery((q) => filterEmptyKeys({ ...q, [field]: input }));
+  const handleQueryInput = (input, field) => {
+    setQuery((q) => {
+      const updated = { ...q, [field]: input };
+      return filterEmptyKeys(updated);
+    });
+  };
 
   const onClick = () => {
-    setEditing(false);
+    setShowResults(true);
   };
 
   useDangerAlert(errorEntities || errorLanguageCodes || errorResults, setAlert);
 
+  const languageOptions = (languageCodes || []).map((code) => ({
+    label: code,
+    value: code,
+  }));
+
+  const entityOptions = (entities || []).map((entity) => ({
+    label: entity,
+    value: entity,
+  }));
+
+  const handleClearForm = () => {
+    setQuery({});
+    setJobName("");
+    setSelectedEntities([]);
+    setShowResults(false);
+  };
+
   return (
-  <ContentLayout 
-    header={
-      <Header
-        variant="h1"
-        info={<Link variant="info" ariaLabel="Info goes here.">Info</Link>}>
+    <Container maxWidth="xl">
+      <Box sx={{ py: 2 }}>
+        <Breadcrumbs aria-label="breadcrumb">
+          <Link underline="hover" color="inherit" href="/">
+            Home
+          </Link>
+          <Typography color="text.primary">Search</Typography>
+        </Breadcrumbs>
+        <Typography variant="h4" component="h1" sx={{ mt: 1 }}>
           Search
-      </Header>
-    }>
-      <Container>
-        <Form>
-          <SpaceBetween direction="vertical" size="l">
-            <FormField label="Language Code">
-              <SpaceBetween direction="horizontal" size="l">
-                <Select
-                  onChange={(event) => handleQueryInput(event.value, "language")}
-                  options={(languageCodes || []).map((code, i) => ({
-                    label: code,
-                    value: code,
-                  }))}
-                  isLoading={!languageCodes && !errorLanguageCodes}
-                  value={
-                    query.language
-                      ? { label: query.language, value: query.language }
-                      : null
-                  }
-                />
-                <Button
-                  className="mt-2"
-                  variant="outline-secondary"
-                  onClick={() => {
-                    handleQueryInput(null, "language");
-                  }}
-                >
-                Clear
-                </Button>
-              </SpaceBetween>
-            </FormField>
-            <FormField label="Date Range">
-              <SpaceBetween direction="horizontal" size="l">
-                <DatePicker
-                  selectsRange
-                  startDate={query.timestampFrom}
-                  endDate={query.timestampTo}
-                  dateFormat="yyyy-MM-dd"
-                  onChange={handleDates}
-                  maxDate={new Date()}
-                  placeholderText="Select a start and end date"
-                />
-                <Button
-                  className="mt-2"
-                  variant="outline-secondary"
-                  onClick={() => {
-                    handleQueryInput(null, "timestampTo");
-                    handleQueryInput(null, "timestampFrom");
-                  }}
-                >
-                  Clear
-                </Button>
-              </SpaceBetween>
-          </FormField>
-          <FormField label="Sentiment">
-            <SpaceBetween direction="horizontal" size="l">
-              <p className="align-self-end mb-0">The</p>
+        </Typography>
+      </Box>
+
+      <Box sx={{ py: 2 }}>
+        <Stack spacing={3}>
+          <FormControl fullWidth>
+            <Box display="flex" alignItems="center" gap={2}>
+              <InputLabel id="language-code-label">Language Code</InputLabel>
               <Select
-                className="flex-grow-1"
-                options={sentimentWhat}
-                onChange={(event) =>
-                  handleQueryInput(event.value, "sentimentWhat")
-                }
-                value={
-                  sentimentWhat.find((o) => o.value === query.sentimentWhat) ||
-                  null
-                }
-              />
-              <p className="align-self-end mb-0"> sentiment of the</p>
-              <Select
-                className="flex-grow-1"
-                options={sentimentWho}
-                onChange={(event) =>
-                  handleQueryInput(event.value, "sentimentWho")
-                }
-                value={
-                  sentimentWho.find((o) => o.value === query.sentimentWho) || null
-                }
-              />
-              <p className="align-self-end mb-0">is</p>
-              <Select
-                className="flex-grow-1"
-                options={sentimentDirection}
-                onChange={(event) =>
-                  handleQueryInput(event.value, "sentimentDirection")
-                }
-                value={
-                  sentimentDirection.find(
-                    (o) => o.value === query.sentimentDirection
-                  ) || null
-                }
-              />
+                labelId="language-code-label"
+                id="language-code"
+                label="Language Code"
+                value={query.language || ""}
+                onChange={(e) => handleQueryInput(e.target.value, "language")}
+                sx={{ minWidth: 200 }}
+              >
+                {languageOptions.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
               <Button
-                className="mt-2"
-                variant="outline-secondary"
+                variant="outlined"
+                onClick={() => handleQueryInput(null, "language")}
+              >
+                Clear
+              </Button>
+            </Box>
+          </FormControl>
+
+          <Box display="flex" alignItems="center" gap={2}>
+            <FormControl fullWidth>
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DatePicker
+                  label="Start Date"
+                  value={query.timestampFrom ? new Date(query.timestampFrom) : null}
+                  onChange={(newValue) => {
+                    handleQueryInput(newValue ? new Date(newValue).getTime() : null, "timestampFrom");
+                  }}
+                  renderInput={(params) => <TextField {...params} />}
+                />
+              </LocalizationProvider>
+            </FormControl>
+            <FormControl fullWidth>
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DatePicker
+                  label="End Date"
+                  value={query.timestampTo ? new Date(query.timestampTo) : null}
+                  onChange={(newValue) => {
+                    handleQueryInput(newValue ? new Date(newValue).setUTCHours(23, 59, 59, 999) : null, "timestampTo");
+                  }}
+                  renderInput={(params) => <TextField {...params} />}
+                />
+              </LocalizationProvider>
+            </FormControl>
+            <Button
+              variant="outlined"
+              onClick={() => {
+                handleQueryInput(null, "timestampFrom");
+                handleQueryInput(null, "timestampTo");
+              }}
+            >
+              Clear
+            </Button>
+          </Box>
+          
+          <Box>
+            <Typography variant="body1" sx={{ mb: 1 }}>
+              Sentiment
+            </Typography>
+            <Stack direction="row" alignItems="center" spacing={2}>
+              <Typography>The</Typography>
+              <FormControl sx={{ minWidth: 150 }}>
+                <Select
+                  value={query.sentimentWhat || ""}
+                  onChange={(e) =>
+                    handleQueryInput(e.target.value, "sentimentWhat")
+                  }
+                >
+                  {SENTIMENT_WHAT.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Typography>sentiment of the</Typography>
+              <FormControl sx={{ minWidth: 150 }}>
+                <Select
+                  value={query.sentimentWho || ""}
+                  onChange={(e) =>
+                    handleQueryInput(e.target.value, "sentimentWho")
+                  }
+                >
+                  {SENTIMENT_WHO.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Typography>is</Typography>
+              <FormControl sx={{ minWidth: 150 }}>
+                <Select
+                  value={query.sentimentDirection || ""}
+                  onChange={(e) =>
+                    handleQueryInput(e.target.value, "sentimentDirection")
+                  }
+                >
+                  {SENTIMENT_DIRECTION.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button
+                variant="outlined"
                 onClick={() => {
                   handleQueryInput(null, "sentimentWhat");
                   handleQueryInput(null, "sentimentWho");
@@ -194,76 +260,120 @@ function Search({ setAlert }) {
               >
                 Clear
               </Button>
-            </SpaceBetween>
-          </FormField>
-          <FormField label="Entities">
-            <SpaceBetween direction="horizontal" size="l">
-              <MultiSelect
-                options={(entities || []).map((entity) => ({
-                  value: entity,
-                  label: entity,
-                }))}
-                onChange={(value) => handleQueryInput(value, "entity")}
-                isLoading={!entities && !errorEntities}
-                />
-            </SpaceBetween>
-          </FormField>
+            </Stack>
+          </Box>
 
-          <FormField label="Job Name">
-            <SpaceBetween direction="horizontal" size="l">
-              <Input
-                  value={jobName}
-                  onChange={(event) => {
-                    setJobName(event.detail.value);
-                    handleQueryInput(event.detail.value, "jobName");
-                  }
-                }
-              />
-              <Button
-                  className="mt-2"
-                  variant="outline-secondary"
-                  onClick={() => {
-                    setJobName("");
-                    handleQueryInput(null, "jobName");
-                  }}
-              >
-                Clear
-              </Button>
+          <FormControl fullWidth>
+            <Autocomplete
+              multiple
+              options={entityOptions}
+              getOptionLabel={(option) => option.label}
+              isOptionEqualToValue={(option, value) =>
+                option.value === value.value
+              }
+              value={selectedEntities}
+              onChange={(e, newValue) => setSelectedEntities(newValue)}
+              renderInput={(params) => (
+                <TextField {...params} label="Entities" />
+              )}
+            />
+          </FormControl>
 
-            </SpaceBetween>
-          </FormField>
+          <Box display="flex" alignItems="center" gap={2}>
+            <TextField
+              label="Job Name"
+              variant="outlined"
+              value={jobName}
+              onChange={(e) => setJobName(e.target.value)}
+              fullWidth
+            />
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setJobName("");
+              }}
+            >
+              Clear
+            </Button>
+          </Box>
 
+          <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
+            <Button variant="contained" onClick={onClick}>
+              Search
+            </Button>
+            <Button variant="outlined" onClick={handleClearForm}>
+              Clear All
+            </Button>
+          </Stack>
+        </Stack>
+      </Box>
 
-          <Button bg={"primary"} onClick={onClick}>
-            Search
-          </Button>
-            
-          <hr/>
-        </SpaceBetween>
-      </Form>
-      {!editing && (
-          <ContactTable
-            header={
-              <Header>
-              Search Results
-              </Header>
-            }
-    
-            variant="embedded"
-          data={results}
-          loading={!results && !errorResults}
-          empty={<NoMatches />}
-        />
-      )}
-      </Container>
-    </ContentLayout>
+      <Box sx={{ mt: 4 }}>
+        <Typography variant="h5" component="h2" sx={{ mb: 2 }}>
+          Search Results
+        </Typography>
+        {showResults && (
+          <ContactTable data={results} loading={isLoading} error={errorResults} />
+        )}
+      </Box>
+    </Container>
   );
 }
+
+const ContactTable = ({ data, loading, error }) => {
+  if (loading) {
+    return (
+      <Box sx={{ display: "flex", justifyContent: "center", my: 4 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (error || !data || data.length === 0) {
+    return <NoMatches />;
+  }
+
+  return (
+    <TableContainer component={Paper}>
+      <Table>
+        <TableHead>
+          <TableRow>
+            <TableCell>Contact ID</TableCell>
+            <TableCell>Language</TableCell>
+            <TableCell>Timestamp</TableCell>
+            <TableCell>Job Name</TableCell>
+            <TableCell>Sentiment</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {data.map((row) => (
+            <TableRow key={row.key}>
+              <TableCell>{row.guid}</TableCell>
+              <TableCell>{row.lang}</TableCell>
+              <TableCell>
+                <Link
+                  to={`/dashboard/${row.key}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {format(new Date(row.timestamp), "P p")}
+                </Link>
+              </TableCell>
+              <TableCell>{row.jobName}</TableCell>
+              <TableCell>{row.callerSentimentScore}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
+  );
+};
+
 const NoMatches = () => (
-  <div>
-    <h2>No Matches</h2>
-    <p>Please try a different query</p>
-  </div>
+  <Box sx={{ textAlign: "center", py: 4 }}>
+    <Typography variant="h6">No Matches</Typography>
+    <Typography variant="body2">Please try a different query</Typography>
+  </Box>
 );
 
 export default Search;

@@ -1,31 +1,27 @@
-import React from "react";
-import { useState } from "react";
+import React, { useState } from "react";
+import { TextField, Button, Box } from "@mui/material";
 
-import { Button,  Grid, Input } from '@cloudscape-design/components';
-
-
-export const ChatInput = ({submitQuery}) => {
+export const ChatInput = ({ submitQuery }) => {
   const [inputQuery, setInputQuery] = useState("");
-  
+
   const onSubmit = (e) => {
-    submitQuery(inputQuery);
-    setInputQuery('');
     e.preventDefault();
-    return true;
-  }
+    if (inputQuery.trim()) {
+      submitQuery(inputQuery);
+      setInputQuery("");
+    }
+  };
 
   return (
-    <form onSubmit={onSubmit}>
-      <Grid gridDefinition={[{ colspan: { default: 12, xxs: 9 } }, { default: 12, xxs: 3 }]}>
-        <Input
-          placeholder="Enter a question about the call."
-          onChange={({ detail }) => setInputQuery(detail.value)}
-          value={inputQuery}
-        />
-          <Button type="submit">
-          Submit
-          </Button>
-      </Grid>
-    </form>
+    <Box component="form" onSubmit={onSubmit} sx={{ display: 'flex', gap: 2, mt: 2 }}>
+      <TextField
+        fullWidth
+        variant="outlined"
+        label="Ask a question"
+        value={inputQuery}
+        onChange={(e) => setInputQuery(e.target.value)}
+      />
+      <Button type="submit" variant="contained">Submit</Button>
+    </Box>
   );
 };

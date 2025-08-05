@@ -1,10 +1,16 @@
-import { Box, Container, Header, Link, SpaceBetween, StatusIndicator } from '@cloudscape-design/components';
+import React from 'react';
+import { Typography, Box } from '@mui/material';
 
-export const ValueWithLabel = ({ label,index, children }) => (
-  <>
-    <Box variant="awsui-key-label">
-      <span tabIndex={index}>{label}</span>
-    </Box>
-    <>{children}</>
-  </>
+export const ValueWithLabel = ({ label, index, children }) => (
+  <Box sx={{ mb: 1 }}>
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      sx={{ display: 'block' }}
+      tabIndex={index}
+    >
+      {label}
+    </Typography>
+    {children}
+  </Box>
 );

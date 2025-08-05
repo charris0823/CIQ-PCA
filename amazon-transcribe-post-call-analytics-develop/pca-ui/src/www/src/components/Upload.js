@@ -1,175 +1,191 @@
-//import { Table } from "react-bootstrap";
-import React from "react";
+import React, { useCallback, useState, useMemo } from 'react';
+import { useDropzone } from 'react-dropzone';
+import axios from 'axios';
 import {
-    Form, SpaceBetween, FormField, FileUpload, Flashbar, Alert
-} from '@cloudscape-design/components';
-import Box from "@cloudscape-design/components/button";
+  Box,
+  Card,
+  Typography,
+  Button,
+  Alert,
+  LinearProgress,
+  Chip,
+  Stack,
+  CardContent,
+} from "@mui/material";
 import { presign } from "../api/api";
-import axios from "axios";
-import {useDropzone} from "react-dropzone";
-import {useCallback, useMemo } from 'react';
-import Button from "@cloudscape-design/components/button";
-import { Header, Container, TokenGroup } from '@cloudscape-design/components';
-import { useDangerAlert } from "../hooks/useAlert";
+import DeleteIcon from '@mui/icons-material/Delete';
 
+// Custom styles for the dropzone area
 const baseStyle = {
-    flex: 1,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    padding: '20px',
-    borderWidth: 3,
-    borderRadius: 10,
-    borderColor: '#eeeeee',
-    borderStyle: 'dashed',
-    backgroundColor: '#fafafa',
-    color: '#737373',
-    outline: 'none',
-    transition: 'border .24s ease-in-out'
-};
-
-const container = {
-    width: '1200px',
-    margin: '0rem auto'
+  flex: 1,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  padding: '20px',
+  borderWidth: 2,
+  borderRadius: 4,
+  borderColor: '#eeeeee',
+  borderStyle: 'dashed',
+  backgroundColor: '#fafafa',
+  color: '#bdbdbd',
+  outline: 'none',
+  transition: 'border .24s ease-in-out',
+  cursor: 'pointer',
 };
 
 const focusedStyle = {
-    borderColor: '#2196f3'
+  borderColor: '#2196f3',
 };
 
 const acceptStyle = {
-    borderColor: '#00e676'
+  borderColor: '#00e676',
 };
 
 const rejectStyle = {
-    borderColor: '#ff1744'
+  borderColor: '#ff1744',
 };
 
-export const Upload = () => {
-    const [uploadStatus, setUploadStatus] = React.useState(false);
-    const [items, setItems] = React.useState([]);
-    const [uploaded, setUploaded] = React.useState(false);
-    const [uploadError, setUploadError] = React.useState("");
-    const successMessage = [{
-        type: "success",
-        content: "Files uploaded successfully.",
-        dismissible: true,
-        dismissLabel: "Dismiss message",
-        onDismiss: () => {setUploaded(false);},
-        id: "message_1"
-    }];
+export const Upload = ({ setAlert }) => {
+  // State variables for managing the upload process
+  const [items, setItems] = useState([]);
+  const [uploadStatus, setUploadStatus] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
-    const onDrop = useCallback((acceptedFiles, rejectedFiles) => {
-        acceptedFiles.forEach((file) => {
-            setItems((prevState) => [...prevState, {label: file.name, file: file}]);
-        });
+  // Function to handle files dropped into the dropzone
+  const onDrop = useCallback((acceptedFiles) => {
+    // Add new files to the items state
+    setItems((prevState) => [
+      ...prevState,
+      ...acceptedFiles.map(file => ({ label: file.name, file: file }))
+    ]);
+    // Clear any previous error messages
+    setUploadError("");
+  }, []);
 
-    }, []);
+  // Function to dismiss a file from the list
+  const onDismiss = (itemIndex) => {
+    setItems((prevState) => prevState.filter((_, index) => index !== itemIndex));
+  };
 
-    const onDismiss = (itemIndex) => {
-        console.log("Label of item:", items[itemIndex]['label']);
-        console.log("File of item:", items[itemIndex]['file']);
-        setItems([
-            ...items.slice(0, itemIndex),
-            ...items.slice(itemIndex + 1)
-        ]);
-    };
+  // Function to handle the actual upload
+  const onUpload = async (e) => {
+    e.preventDefault();
+    setUploadStatus(true);
+    setUploadError("");
 
-    const { getRootProps,
-           getInputProps,
-           isFocused,
-           isDragAccept,
-           isDragActive,
-           isDragReject
-    } = useDropzone({
-        onDrop,
-        accept: {
-            'audio/*': ['.mp3', '.wav', '.flac', '.ogg', '.amr'],
-            'video/*': ['.mp4', '.webm'],
-        }, validator: file => {
-            if (!/^[a-zA-Z0-9._-]+$/.test(file.name)) {
-                setUploadError("File contains invalid characters. No spaces are allowed, and only characters a-z, A-Z, 0-9, period (.), underscore (_), and hyphen (-) are allowed.");
-                return {
-                    code: "filename-invalid",
-                    message: `Invalid character in file name: ${file.name}`
-                };
-            }
-        },
-    });
+    try {
+      if (items.length === 0) {
+        throw new Error("Please select files to upload.");
+      }
+      
+      // Loop through each file and upload it
+      for (const item of items) {
+        const file = item.file;
+        console.log("File uploaded=", file.name);
 
-    const onUpload = async (e) => {
-        e.preventDefault();
-        setUploadStatus(true);
-        try {
-            for (let i = 0; i < items.length; i++) {
-                console.log("File uploaded=", items[i].file.name);
-                const response = await presign(items[i].file.name);
-                
-                const r = await axios.put(response.url, items[i].file);
-            }
-            setItems((prevState) => []);
-            setUploaded(true);
-        } catch (err) {
-            setUploadError("An error occurred uploading file(s): " + err.toLocaleString());
-        } finally {
-            setUploadStatus(false);
+        const response = await presign(file.name);
+        
+        if (!response || !response.url) {
+            throw new Error(`Failed to get a valid presigned URL for file: ${file.name}`);
         }
 
-    };
+        // The original code used a PUT request, which is common for presigned URLs
+        await axios.put(response.url, file);
+      }
 
-    const style = useMemo(() => ({
-        ...baseStyle,
-        ...(isFocused ? focusedStyle : {}),
-        ...(isDragAccept ? acceptStyle : {}),
-        ...(isDragReject ? rejectStyle : {})
-    }), [
-        isFocused,
-        isDragAccept,
-        isDragReject
-    ]);
+      setItems([]);
+      setAlert({ heading: "Upload success", text: "Files uploaded successfully.", variant: "success" });
 
-    return (
-        <form onSubmit={(e) => onUpload(e)}>
-            <Form
-                actions={
-                    <SpaceBetween direction='horizontal' size='xs'>
-                        {uploadStatus ? <Button disabled={true} loading >Uploading</Button> : <Button variant="normal">Upload</Button>}
-                    </SpaceBetween>
-                }
+    } catch (err) {
+      console.error("Upload error", err);
+      // Set a descriptive error message
+      setUploadError(err.message || "An unknown error occurred during upload.");
+    } finally {
+      // Always reset the upload status when done
+      setUploadStatus(false);
+    }
+  };
+
+  // useDropzone hook with file validation and styling
+  const { getRootProps, getInputProps, isFocused, isDragAccept, isDragReject } = useDropzone({
+    onDrop,
+    accept: {
+      'audio/*': ['.mp3', '.wav', '.flac', '.ogg', '.amr'],
+      'video/*': ['.mp4', '.webm'],
+    },
+    validator: file => {
+      // Validate filename characters
+      if (!/^[a-zA-Z0-9._-]+$/.test(file.name)) {
+        setUploadError("Filenames can only include characters a-z, A-Z, 0-9, period (.), underscore (_), and hyphen (-).");
+        return {
+          code: "filename-invalid",
+          message: `Invalid character in file name: ${file.name}`
+        };
+      }
+      return null;
+    },
+  });
+
+  // Memoize the dropzone styling for performance
+  const style = useMemo(() => ({
+    ...baseStyle,
+    ...(isFocused ? focusedStyle : {}),
+    ...(isDragAccept ? acceptStyle : {}),
+    ...(isDragReject ? rejectStyle : {})
+  }), [isFocused, isDragAccept, isDragReject]);
+
+  return (
+    <Card variant="outlined" sx={{ mb: 4 }}>
+      <CardContent>
+        {/* Display an error alert if there is one */}
+        {uploadError && (
+          <Alert severity="error" onClose={() => setUploadError("")} sx={{ mb: 2 }}>
+            {uploadError}
+          </Alert>
+        )}
+        
+        {/* Upload form and dropzone area */}
+        <form onSubmit={onUpload}>
+          <Box {...getRootProps({ style })}>
+            <input {...getInputProps()} />
+            <Typography variant="body1" color="text.primary" sx={{ textAlign: 'center' }}>
+              Drag and drop or click to select call recordings to upload.
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center' }}>
+              Valid formats: MP3, WAV, FLAC, OGG, AMR, MP4, and WEBM.
+              <br/>Filenames can only include characters a-z, A-Z, 0-9, period (.), underscore (_), and hyphen (-).
+            </Typography>
+          </Box>
+          
+          {/* Display selected files as chips */}
+          <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+            {items.map((item, index) => (
+              <Chip
+                key={index}
+                label={item.label}
+                onDelete={() => onDismiss(index)}
+                deleteIcon={<DeleteIcon />}
+              />
+            ))}
+          </Stack>
+
+          {/* Loading indicator during upload */}
+          {uploadStatus && <LinearProgress sx={{ mt: 2 }} />}
+
+          {/* Upload button */}
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
+            <Button
+              variant="contained"
+              type="submit"
+              disabled={uploadStatus || items.length === 0}
             >
-                <Container
-                    header={
-                        <Header variant="h2">
-                            Upload call recordings
-                        </Header>
-                    }
-                    footer={
-                        <div>
-                            { uploaded ? <div><Flashbar items={successMessage}/></div> : "" }
-                            { uploadError !== "" ? <div><Alert dismissible onDismiss={() => {
-                                setUploadError("");
-                            }} type="error">{uploadError}</Alert></div> : "" }
-                        </div>
-                    }
-                >
-                    <div className="container">
-                        <div {...getRootProps({style})}>
-                            <input {...getInputProps()} />
-                            {isDragAccept && (<p>Drag and drop or click to select call recordings to upload. Filenames can only include characters a-z, A-Z, 0-9, period (.), underscore (_), and hyphen (-).
-                            <br></br>Valid formats: MP3, WAV, FLAC, OGG, AMR, MP4, and WEBM</p>)}
-                            {isDragReject && (<p>Unsupported files detected</p>)}
-                            {!isDragActive && (<p>Drag and drop or click to select call recordings to upload. Filenames can only include characters a-z, A-Z, 0-9, period (.), underscore (_), and hyphen (-).
-                             <br></br>Valid formats: MP3, WAV, FLAC, OGG, AMR, MP4, and WEBM</p>)}
-                        </div>
-                    </div>
-                    <aside>
-                        <TokenGroup
-                            onDismiss={(e) => onDismiss(e.detail.itemIndex)}
-                            items={items}
-                        />
-                    </aside>
-                </Container>
-            </Form>
+              {uploadStatus ? "Uploading..." : "Upload"}
+            </Button>
+          </Box>
         </form>
-    );
+      </CardContent>
+    </Card>
+  );
 };
+
+export default Upload;
