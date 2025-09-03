@@ -37,6 +37,9 @@ import {
   ColumnLayout,
   Badge
 } from '@cloudscape-design/components';
+import { Grid as MUIGrid, Paper, Typography } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
+
 
 const getSentimentTrends = (d, target, labels) => {
   const id = Object.entries(labels).find(([_, v]) => v === target)?.[0];
@@ -469,51 +472,75 @@ function Dashboard({ setAlert }) {
     );
   };
 
+const SENTIMENT_THRESHOLD = 0.15; // tweak if you like
+
+const getMuiSentimentColor = (theme, score) => {
+  if (score > SENTIMENT_THRESHOLD) return theme.palette.success.main;
+  if (score < -SENTIMENT_THRESHOLD) return theme.palette.error.main;
+  return theme.palette.text.secondary;
+};
+
   // Key metrics for the top bar
-  const KeyMetricsBar = () => (
-    <Box padding="m" margin={{ bottom: "l" }}>
-      <ColumnLayout columns={4} variant="text-grid">
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#232f3e' }}>
-            {data ? Formatter.Time(data.ConversationAnalytics.Duration) : '--:--'}
-          </div>
-          <div style={{ fontSize: '14px', color: '#687078' }}>Duration</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
-            {data ? (
-              <Sentiment
-                score={getSentimentTrends(data, "Agent", speakerLabels)?.SentimentScore}
-                trend={getSentimentTrends(data, "Agent", speakerLabels)?.SentimentChange}
-              />
-            ) : (
-              <span style={{ color: '#687078' }}>--</span>
-            )}
-          </div>
-          <div style={{ fontSize: '14px', color: '#687078' }}>Agent Sentiment</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '20px', fontWeight: 'bold' }}>
-            {data ? (
-              <Sentiment
-                score={getSentimentTrends(data, "Customer", speakerLabels)?.SentimentScore}
-                trend={getSentimentTrends(data, "Customer", speakerLabels)?.SentimentChange}
-              />
-            ) : (
-              <span style={{ color: '#687078' }}>--</span>
-            )}
-          </div>
-          <div style={{ fontSize: '14px', color: '#687078' }}>Customer Sentiment</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#232f3e' }}>
-            {data?.ConversationAnalytics?.GUID?.substring(0, 8) || 'N/A'}
-          </div>
-          <div style={{ fontSize: '14px', color: '#687078' }}>Call ID</div>
-        </div>
-      </ColumnLayout>
-    </Box>
-  );
+  const KeyMetricsBar = () => {
+    const theme = useTheme();
+
+    const agent = getSentimentTrends(data, "Agent", speakerLabels);
+    const cust  = getSentimentTrends(data, "Customer", speakerLabels);
+
+    const agentScore = agent?.SentimentScore ?? 0;
+    const custScore  = cust?.SentimentScore ?? 0;
+
+    return (
+      <Box sx={{ flexGrow: 1, p: 2, mb: 3 }}>
+        <MUIGrid container spacing={4} justifyContent="center">
+          <MUIGrid item xs={12} sm={6} md={4} lg={3}>
+            <Paper elevation={2} sx={{ p: 2, textAlign: "center" }}>
+              <Typography
+                variant="h6"
+                fontWeight="bold"
+                sx={{ color: getMuiSentimentColor(theme, agentScore) }}
+              >
+                {data ? (
+                  <Sentiment
+                    score={agentScore}
+                    trend={agent?.SentimentChange}
+                  />
+                ) : (
+                  <span style={{ color: "#687078" }}>--</span>
+                )}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Agent Sentiment
+              </Typography>
+            </Paper>
+          </MUIGrid>
+
+          <MUIGrid item xs={12} sm={6} md={4} lg={3}>
+            <Paper elevation={2} sx={{ p: 2, textAlign: "center" }}>
+              <Typography
+                variant="h6"
+                fontWeight="bold"
+                sx={{ color: getMuiSentimentColor(theme, custScore) }}
+              >
+                {data ? (
+                  <Sentiment
+                    score={custScore}
+                    trend={cust?.SentimentChange}
+                  />
+                ) : (
+                  <span style={{ color: "#687078" }}>--</span>
+                )}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Customer Sentiment
+              </Typography>
+            </Paper>
+          </MUIGrid>
+        </MUIGrid>
+      </Box>
+    );
+  };
+
 
   useEffect(() => {
     window.scrollTo(0, 0);
@@ -526,22 +553,6 @@ function Dashboard({ setAlert }) {
           <Header
             variant="h1"
             actions={[
-              data && (
-                <audio
-                  key='audoiElem'
-                  ref={audioElem}
-                  style={{ marginRight: '16px' }}
-                  controls
-                  src={
-                    data?.ConversationAnalytics?.SourceInformation[0]
-                      ?.TranscribeJobInfo?.MediaFileUri
-                  }
-                  onTimeUpdate={onAudioPlayTimeUpdate}
-                >
-                  Your browser does not support the
-                  <code>audio</code> element.
-                </audio>
-              ),
               <Button key='swapAgent' onClick={swapAgent} disabled={isSwapping}>
                 {isSwapping ? "Swapping..." : "Swap Agent/Caller"}
               </Button>
@@ -847,7 +858,21 @@ function Dashboard({ setAlert }) {
         {/* Right Column: Transcript */}
         <Container
           header={
-            <Header variant="h2">
+            <Header
+              variant="h2"
+              actions={
+                data && (
+                  <audio
+                    key="audioElemTranscript"
+                    ref={audioElem}
+                    controls
+                    src={data?.ConversationAnalytics?.SourceInformation[0]?.TranscribeJobInfo?.MediaFileUri}
+                    onTimeUpdate={onAudioPlayTimeUpdate}
+                    style={{ display: 'block', width: 320, maxWidth: '100%' }}
+                  />
+                )
+              }
+            >
               Transcript
             </Header>
           }

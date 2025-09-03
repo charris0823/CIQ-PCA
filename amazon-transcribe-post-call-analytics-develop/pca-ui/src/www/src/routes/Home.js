@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import useSWRInfinite from "swr/infinite";
 import { list } from "../api/api";
 import Upload from '../components/Upload';
@@ -26,6 +26,13 @@ import {
   useTheme,
   Fade,
   Grow,
+  // NEW:
+  Popover,
+  TextField,
+  FormGroup,
+  FormControlLabel,
+  Checkbox,
+  InputAdornment,
 } from "@mui/material";
 
 import {
@@ -47,11 +54,30 @@ const config = window.pcaSettings;
 function Home({ setAlert }) {
   const theme = useTheme();
   const [page, setPage] = useState(0);
-  const [rowsPerPage, setRowsPerPage] = useState(10); 
+  const [rowsPerPage, setRowsPerPage] = useState(10);
   const [uploadExpanded, setUploadExpanded] = useState(false);
 
+  // Search / filter UI state
+  const [searchAnchor, setSearchAnchor] = useState(null);
+  const [filterAnchor, setFilterAnchor] = useState(null);
+  const [q, setQ] = useState(""); // search text
+
+  // Adjust to match your actual status values if different
+  const [statusFilters, setStatusFilters] = useState({
+    Done: true,
+    Processing: true,
+    Failed: true,
+  });
+
+  const openSearch = (e) => setSearchAnchor(e.currentTarget);
+  const openFilter = (e) => setFilterAnchor(e.currentTarget);
+  const closeSearch = () => setSearchAnchor(null);
+  const closeFilter = () => setFilterAnchor(null);
+  const toggleStatus = (name) => (e) =>
+    setStatusFilters((s) => ({ ...s, [name]: e.target.checked }));
+
   const fetcher = (url, startKey, timestampFrom) => {
-    return list({ count: 100 }); 
+    return list({ count: 100 });
   };
 
   const getKey = (pageIndex, previousPageData) => {
@@ -61,9 +87,46 @@ function Home({ setAlert }) {
   const { data, error, isValidating } = useSWRInfinite(getKey, fetcher);
   const isLoading = !data && !error;
   useDangerAlert(error, setAlert);
-  
-  const allRecords = (data || []).map((d) => d.Records).flat();
-  const paginatedRecords = allRecords.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+
+  const allRecords = useMemo(
+    () => (data || []).map((d) => d.Records).flat(),
+    [data]
+  );
+
+  // Apply search + filter first
+  const qNorm = q.trim().toLowerCase();
+  const filteredRecords = useMemo(() => {
+    return (allRecords || [])
+      .filter((r) => {
+        const status = r.status || "Done";
+        return statusFilters[status] ?? true;
+      })
+      .filter((r) => {
+        if (!qNorm) return true;
+        // Index common fields (adjust to your schema)
+        const hay = [
+          r.jobName,
+          r.timestamp,
+          r.agent,
+          r.contactId,
+          r.mediaType,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(qNorm);
+      });
+  }, [allRecords, qNorm, statusFilters]);
+
+  // Then paginate the filtered set
+  const paginatedRecords = useMemo(
+    () =>
+      filteredRecords.slice(
+        page * rowsPerPage,
+        page * rowsPerPage + rowsPerPage
+      ),
+    [filteredRecords, page, rowsPerPage]
+  );
 
   const handleChangePage = (event, newPage) => {
     setPage(newPage);
@@ -74,10 +137,10 @@ function Home({ setAlert }) {
     setPage(0);
   };
 
-  // Calculate stats
+  // Calculate stats (based on ALL records; chips below also show "Shown")
   const totalCalls = allRecords.length;
-  const completedCalls = allRecords.filter(record => record.status === 'Done').length;
-  const recentCalls = allRecords.filter(record => {
+  const completedCalls = allRecords.filter((record) => record.status === "Done").length;
+  const recentCalls = allRecords.filter((record) => {
     if (!record.timestamp) return false;
     const recordDate = new Date(record.timestamp);
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
@@ -89,10 +152,10 @@ function Home({ setAlert }) {
 
   const StatsCard = ({ icon, title, value, subtitle, color = "primary", trend, onClick }) => (
     <Grow in timeout={800} style={{ transitionDelay: '200ms' }}>
-      <Card 
+      <Card
         elevation={0}
         onClick={onClick}
-        sx={{ 
+        sx={{
           height: '100%',
           border: 1,
           borderColor: 'divider',
@@ -121,20 +184,20 @@ function Home({ setAlert }) {
         }}
       >
         <CardContent sx={{ p: 3, textAlign: 'center', position: 'relative' }}>
-          <Box 
+          <Box
             className="stats-icon"
-            sx={{ 
-              mb: 2, 
+            sx={{
+              mb: 2,
               color: `${color}.main`,
               transition: 'transform 0.3s ease'
             }}
           >
             {icon}
           </Box>
-          <Typography 
-            variant="h3" 
-            fontWeight="bold" 
-            sx={{ 
+          <Typography
+            variant="h3"
+            fontWeight="bold"
+            sx={{
               background: `linear-gradient(45deg, ${theme.palette[color].main}, ${theme.palette[color].dark})`,
               backgroundClip: 'text',
               WebkitBackgroundClip: 'text',
@@ -151,9 +214,9 @@ function Home({ setAlert }) {
             {subtitle}
           </Typography>
           {trend && (
-            <Chip 
-              size="small" 
-              label={trend} 
+            <Chip
+              size="small"
+              label={trend}
               color={color}
               variant="outlined"
               sx={{ mt: 1, fontSize: '0.75rem' }}
@@ -165,9 +228,9 @@ function Home({ setAlert }) {
   );
 
   const FeatureCard = ({ icon, title, description }) => (
-    <Card 
+    <Card
       elevation={0}
-      sx={{ 
+      sx={{
         height: '100%',
         border: 1,
         borderColor: 'divider',
@@ -218,27 +281,27 @@ function Home({ setAlert }) {
           <Fade in timeout={1000}>
             <Grid container spacing={4} alignItems="center">
               <Grid item xs={12} md={8}>
-                <Typography 
-                  variant="h2" 
-                  fontWeight="bold" 
+                <Typography
+                  variant="h2"
+                  fontWeight="bold"
                   gutterBottom
-                  sx={{ 
+                  sx={{
                     fontSize: { xs: '2.5rem', md: '3.5rem' },
                     lineHeight: 1.2
                   }}
                 >
                   Call Analytics Dashboard
                 </Typography>
-                <Typography 
-                  variant="h5" 
-                  sx={{ 
-                    opacity: 0.95, 
+                <Typography
+                  variant="h5"
+                  sx={{
+                    opacity: 0.95,
                     mb: 4,
                     fontSize: { xs: '1.2rem', md: '1.5rem' },
                     lineHeight: 1.4
                   }}
                 >
-                  Powerful call analytics with AI‑driven transcription, sentiment tracking, and actionable insights
+                  Powerful call analytics with AI-driven transcription, sentiment tracking, and actionable insights
                 </Typography>
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                   <Button
@@ -247,11 +310,10 @@ function Home({ setAlert }) {
                     startIcon={<CloudUploadIcon />}
                     onClick={() => {
                       setUploadExpanded(true);
-                      // Scroll to upload section after a brief delay to allow accordion to expand
                       setTimeout(() => {
                         const uploadSection = document.getElementById('upload-section');
                         if (uploadSection) {
-                          uploadSection.scrollIntoView({ 
+                          uploadSection.scrollIntoView({
                             behavior: 'smooth',
                             block: 'start'
                           });
@@ -266,7 +328,7 @@ function Home({ setAlert }) {
                       fontSize: '1.1rem',
                       fontWeight: 600,
                       boxShadow: theme.shadows[8],
-                      '&:hover': { 
+                      '&:hover': {
                         bgcolor: 'grey.100',
                         transform: 'translateY(-2px)',
                         boxShadow: theme.shadows[12]
@@ -287,8 +349,8 @@ function Home({ setAlert }) {
                       px: 3,
                       fontSize: '1.1rem',
                       fontWeight: 600,
-                      '&:hover': { 
-                        borderColor: 'white', 
+                      '&:hover': {
+                        borderColor: 'white',
                         bgcolor: alpha('#fff', 0.1),
                         transform: 'translateY(-2px)'
                       }
@@ -414,27 +476,27 @@ function Home({ setAlert }) {
         {/* Upload Section */}
         <Box sx={{ mb: 8 }}>
           <Fade in timeout={1000} style={{ transitionDelay: '900ms' }}>
-            <Paper 
+            <Paper
               elevation={0}
-              sx={{ 
-                border: 1, 
+              sx={{
+                border: 1,
                 borderColor: 'divider',
                 borderRadius: 3,
                 overflow: 'hidden'
               }}
             >
-              <Accordion 
+              <Accordion
                 id="upload-section"
-                expanded={uploadExpanded} 
+                expanded={uploadExpanded}
                 onChange={(e, expanded) => setUploadExpanded(expanded)}
                 elevation={0}
-                sx={{ 
+                sx={{
                   '&:before': { display: 'none' },
                 }}
               >
-                <AccordionSummary 
+                <AccordionSummary
                   expandIcon={<ExpandMoreIcon />}
-                  sx={{ 
+                  sx={{
                     px: 4,
                     py: 3,
                     bgcolor: alpha(theme.palette.primary.main, 0.02),
@@ -477,20 +539,20 @@ function Home({ setAlert }) {
 
         {/* Call Records Table */}
         <Fade in timeout={1000} style={{ transitionDelay: '1200ms' }}>
-          <Paper 
+          <Paper
             elevation={0}
-            sx={{ 
-              border: 1, 
+            sx={{
+              border: 1,
               borderColor: 'divider',
               borderRadius: 3,
               overflow: 'hidden'
             }}
           >
             {/* Table Header */}
-            <Box 
-              sx={{ 
-                px: 4, 
-                py: 3, 
+            <Box
+              sx={{
+                px: 4,
+                py: 3,
                 bgcolor: alpha(theme.palette.grey[50], 0.8),
                 borderBottom: 1,
                 borderColor: 'divider'
@@ -502,50 +564,85 @@ function Home({ setAlert }) {
                     Call Records
                   </Typography>
                   <Stack direction="row" spacing={2} alignItems="center">
-                    <Chip 
-                      label={`${totalCalls} Total`} 
-                      size="small" 
-                      variant="outlined"
-                    />
-                    <Chip 
-                      label={`${completedCalls} Processed`} 
-                      size="small" 
-                      color="success"
-                      variant="outlined"
-                    />
+                    <Chip label={`${totalCalls} Total`} size="small" variant="outlined" />
+                    <Chip label={`${completedCalls} Processed`} size="small" color="success" variant="outlined" />
+                    <Chip label={`${filteredRecords.length} Shown`} size="small" variant="outlined" />
                     {isLoading && (
-                      <Chip 
-                        label="Loading..." 
-                        size="small" 
-                        color="info"
-                        variant="outlined"
-                      />
+                      <Chip label="Loading..." size="small" color="info" variant="outlined" />
                     )}
                   </Stack>
                 </Box>
+
                 <Stack direction="row" spacing={1}>
-                  <IconButton 
-                    size="small" 
-                    sx={{ 
-                      border: 1, 
-                      borderColor: 'divider',
-                      '&:hover': { borderColor: 'primary.main' }
-                    }}
+                  <IconButton
+                    size="small"
+                    onClick={openSearch}
+                    sx={{ border: 1, borderColor: 'divider', '&:hover': { borderColor: 'primary.main' } }}
+                    aria-label="Search"
                   >
                     <SearchIcon />
                   </IconButton>
-                  <IconButton 
-                    size="small" 
-                    sx={{ 
-                      border: 1, 
-                      borderColor: 'divider',
-                      '&:hover': { borderColor: 'primary.main' }
-                    }}
+                  <IconButton
+                    size="small"
+                    onClick={openFilter}
+                    sx={{ border: 1, borderColor: 'divider', '&:hover': { borderColor: 'primary.main' } }}
+                    aria-label="Filter"
                   >
                     <FilterListIcon />
                   </IconButton>
                 </Stack>
               </Stack>
+
+              {/* Search popover */}
+              <Popover
+                open={Boolean(searchAnchor)}
+                anchorEl={searchAnchor}
+                onClose={closeSearch}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              >
+                <Box sx={{ p: 2, width: 320 }}>
+                  <TextField
+                    autoFocus
+                    fullWidth
+                    size="small"
+                    label="Search jobs, timestamp, agent…"
+                    value={q}
+                    onChange={(e) => { setQ(e.target.value); setPage(0); }}
+                    InputProps={{
+                      startAdornment: (
+                        <InputAdornment position="start">
+                          <SearchIcon fontSize="small" />
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                </Box>
+              </Popover>
+
+              {/* Filter popover */}
+              <Popover
+                open={Boolean(filterAnchor)}
+                anchorEl={filterAnchor}
+                onClose={closeFilter}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+              >
+                <Box sx={{ p: 2 }}>
+                  <FormGroup>
+                    <FormControlLabel
+                      control={<Checkbox checked={statusFilters.Done} onChange={toggleStatus('Done')} />}
+                      label="Done"
+                    />
+                    <FormControlLabel
+                      control={<Checkbox checked={statusFilters.Processing} onChange={toggleStatus('Processing')} />}
+                      label="Processing"
+                    />
+                    <FormControlLabel
+                      control={<Checkbox checked={statusFilters.Failed} onChange={toggleStatus('Failed')} />}
+                      label="Failed"
+                    />
+                  </FormGroup>
+                </Box>
+              </Popover>
             </Box>
 
             {/* Table Content */}
@@ -581,7 +678,7 @@ function Home({ setAlert }) {
               ) : (
                 <Stack spacing={3}>
                   <ContactTable rows={paginatedRecords} />
-                  
+
                   <Box sx={{ display: 'flex', justifyContent: 'center' }}>
                     <Paper
                       elevation={0}
@@ -594,18 +691,14 @@ function Home({ setAlert }) {
                     >
                       <TablePagination
                         component="div"
-                        count={allRecords.length}
+                        count={filteredRecords.length}        // count after filtering
                         page={page}
                         onPageChange={handleChangePage}
                         rowsPerPage={rowsPerPage}
                         onRowsPerPageChange={handleChangeRowsPerPage}
                         rowsPerPageOptions={[5, 10, 20, 50]}
                         labelRowsPerPage="Records per page:"
-                        sx={{
-                          '& .MuiTablePagination-toolbar': {
-                            px: 3
-                          }
-                        }}
+                        sx={{ '& .MuiTablePagination-toolbar': { px: 3 } }}
                       />
                     </Paper>
                   </Box>
